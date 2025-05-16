@@ -1,0 +1,24 @@
+# Node modules
+**/node_modules/
+
+# Logs
+*.log
+
+# dotenv environment variables
+*.env
+
+# Dependency directories
+package-lock.json yarn.lock
+
+# Build output
+**/build/
+**/dist/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE/editor settings
+.vscode/
+*.sw?
+.idea/
