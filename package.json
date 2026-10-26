@@ -1,0 +1,21 @@
+{
+  "name": "flight-management",
+  "version": "1.0.0",
+  "description": "Flight Management System with React, Node.js, Express, and TiDB MySQL",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "server": "cd backend && node server.js",
+    "client": "cd frontend && npm start",
+    "build": "cd frontend && npm install && npm run build && cd ../backend && npm install",
+    "heroku-postbuild": "cd frontend && npm install && npm run build"
+  },
+  "keywords": [
+    "flight-management",
+    "react",
+    "express",
+    "mysql"
+  ],
+  "author": "vivekdsharma",
+  "license": "ISC"
+}

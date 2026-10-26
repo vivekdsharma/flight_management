@@ -14,30 +14,54 @@ const flightSearchRoutes = require("./routes/flightSearch");
 const passengerRoutes = require("./routes/passengerRoutes");
 
 const app = express();
-app.use(cors());
+
+// Enable CORS for all origins (supports Render, Vercel, Netlify, localhost)
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-access-token']
+}));
 app.use(express.json());
 
-// API Status
+// Health Check Endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: '✈️ Flight Management Backend Running!' });
+  res.json({
+    status: 'ok',
+    message: '✈️ Flight Management Backend Running!',
+    timestamp: new Date().toISOString()
+  });
 });
 
+// Mount Routes
 app.use('/flights', flightRoutes);
 app.use('/bookings', bookingRoutes);
 app.use('/payments', paymentRoutes);
 app.use('/api/flights', flightSearchRoutes);
 app.use('/api/passenger', passengerRoutes);
 
-// Optional: Serve Frontend Production Build if placed in /public or ../frontend/build
+// Optional: Serve Frontend Production Build if placed in ../frontend/build
 const frontendBuildPath = path.join(__dirname, '../frontend/build');
 app.use(express.static(frontendBuildPath));
+
 app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api') || req.path.startsWith('/flights') || req.path.startsWith('/bookings') || req.path.startsWith('/payments')) {
+  if (
+    req.path.startsWith('/api') ||
+    req.path.startsWith('/flights') ||
+    req.path.startsWith('/bookings') ||
+    req.path.startsWith('/payments')
+  ) {
     return next();
   }
+
   res.sendFile(path.join(frontendBuildPath, 'index.html'), (err) => {
     if (err) {
-      res.send('✈️ Flight Management Backend Running! (Frontend build not located at ../frontend/build)');
+      res.send(`
+        <div style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+          <h2>✈️ Flight Management Backend Running!</h2>
+          <p>Backend API is active and connected to TiDB Cloud Database.</p>
+          <p>Frontend API endpoint: <code>/api/flights/search</code></p>
+        </div>
+      `);
     }
   });
 });
