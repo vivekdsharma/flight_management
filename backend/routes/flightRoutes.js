@@ -8,82 +8,118 @@ const adminOnly = require("../middleware/adminOnly");
 function toMySQLDateTime(dt) {
   if (!dt) return null;
   const d = new Date(dt);
+  if (isNaN(d.getTime())) return dt; // Already formatted string
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
-// GET all flights
-router.get("/", verifyToken, adminOnly, async (req, res) => {
+// GET all flights (Public / Authenticated)
+router.get("/", async (req, res) => {
   try {
-    const [flights] = await db.query("SELECT * FROM flights");
+    const [flights] = await db.query(
+      "SELECT * FROM Flights ORDER BY DepartureTime ASC"
+    );
     res.json(flights);
   } catch (err) {
-    console.error(err);
+    console.error("Error fetching flights:", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
 // GET single flight by ID
-router.get("/:id", verifyToken, adminOnly, (req, res) => {
+router.get("/:id", async (req, res) => {
   const { id } = req.params;
-  db.query("SELECT * FROM Flights WHERE FlightID = ?", [id], (err, results) => {
-    if (err) return res.status(500).json({ error: err });
-    if (results.length === 0)
+  try {
+    const [results] = await db.query(
+      "SELECT * FROM Flights WHERE FlightID = ?",
+      [id]
+    );
+    if (results.length === 0) {
       return res.status(404).json({ message: "Flight not found" });
+    }
     res.json(results[0]);
-  });
+  } catch (err) {
+    console.error("Error fetching flight:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// POST new flight
-router.post("/", verifyToken, adminOnly, (req, res) => {
+// POST new flight (Admin only)
+router.post("/", verifyToken, adminOnly, async (req, res) => {
   const flight = req.body;
-  const sql =
-    "INSERT INTO Flights (AirlineName, Departure_Place, Destination_Place, DepartureTime, ArrivalTime, SeatsAvailable, Price) VALUES (?, ?, ?, ?, ?, ?, ?)";
-  const values = [
-    flight.AirlineName,
-    flight.Departure_Place,
-    flight.Destination_Place,
-    toMySQLDateTime(flight.DepartureTime),
-    toMySQLDateTime(flight.ArrivalTime),
-    flight.SeatsAvailable,
-    flight.Price,
-  ];
+  try {
+    const sql = `
+      INSERT INTO Flights 
+      (AirlineName, Departure_Place, Destination_Place, DepartureTime, ArrivalTime, SeatsAvailable, Price) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+    const values = [
+      flight.AirlineName,
+      flight.Departure_Place,
+      flight.Destination_Place,
+      toMySQLDateTime(flight.DepartureTime),
+      toMySQLDateTime(flight.ArrivalTime),
+      parseInt(flight.SeatsAvailable, 10),
+      parseFloat(flight.Price),
+    ];
 
-  db.query(sql, values, (err, result) => {
-    if (err) return res.status(500).json({ error: err });
-    res.json({ message: "Flight added", FlightID: result.insertId });
-  });
+    const [result] = await db.query(sql, values);
+    res.status(201).json({
+      message: "Flight added successfully",
+      FlightID: result.insertId,
+    });
+  } catch (err) {
+    console.error("Error adding flight:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// PUT update flight
-router.put("/:id", verifyToken, adminOnly, (req, res) => {
+// PUT update flight (Admin only)
+router.put("/:id", verifyToken, adminOnly, async (req, res) => {
   const { id } = req.params;
   const flight = req.body;
-  const sql =
-    "UPDATE Flights SET AirlineName=?, Departure_Place=?, Destination_Place=?, DepartureTime=?, ArrivalTime=?, SeatsAvailable=?, Price=? WHERE FlightID=?";
-  const values = [
-    flight.AirlineName,
-    flight.Departure_Place,
-    flight.Destination_Place,
-    toMySQLDateTime(flight.DepartureTime),
-    toMySQLDateTime(flight.ArrivalTime),
-    flight.SeatsAvailable,
-    flight.Price,
-    id,
-  ];
+  try {
+    const sql = `
+      UPDATE Flights 
+      SET AirlineName=?, Departure_Place=?, Destination_Place=?, DepartureTime=?, ArrivalTime=?, SeatsAvailable=?, Price=? 
+      WHERE FlightID=?
+    `;
+    const values = [
+      flight.AirlineName,
+      flight.Departure_Place,
+      flight.Destination_Place,
+      toMySQLDateTime(flight.DepartureTime),
+      toMySQLDateTime(flight.ArrivalTime),
+      parseInt(flight.SeatsAvailable, 10),
+      parseFloat(flight.Price),
+      id,
+    ];
 
-  db.query(sql, values, (err) => {
-    if (err) return res.status(500).json({ error: err });
-    res.json({ message: "Flight updated" });
-  });
+    const [result] = await db.query(sql, values);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Flight not found" });
+    }
+    res.json({ message: "Flight updated successfully" });
+  } catch (err) {
+    console.error("Error updating flight:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// DELETE flight
-router.delete("/:id", verifyToken, adminOnly, (req, res) => {
+// DELETE flight (Admin only)
+router.delete("/:id", verifyToken, adminOnly, async (req, res) => {
   const { id } = req.params;
-  db.query("DELETE FROM Flights WHERE FlightID = ?", [id], (err) => {
-    if (err) return res.status(500).json({ error: err });
-    res.json({ message: "Flight deleted" });
-  });
+  try {
+    const [result] = await db.query("DELETE FROM Flights WHERE FlightID = ?", [
+      id,
+    ]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Flight not found" });
+    }
+    res.json({ message: "Flight deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting flight:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

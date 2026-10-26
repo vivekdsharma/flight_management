@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from "react";
-import axios from "../axiosConfig";
 import {
   Box,
   Paper,
   Typography,
   Grid,
-  Divider,
   Button,
   Dialog,
   DialogTitle,
@@ -13,618 +11,797 @@ import {
   DialogActions,
   TextField,
   IconButton,
+  Tabs,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  Card,
+  CardContent,
+  CircularProgress,
+  Stack,
 } from "@mui/material";
-import { toast, ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import AddIcon from "@mui/icons-material/Add";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import FlightTakeoffIcon from "@mui/icons-material/FlightTakeoff";
+import BookOnlineIcon from "@mui/icons-material/BookOnline";
+import MonetizationOnIcon from "@mui/icons-material/MonetizationOn";
+import PeopleIcon from "@mui/icons-material/People";
 import SearchIcon from "@mui/icons-material/Search";
+import { toast } from "react-toastify";
+import axiosInstance from "../axiosConfig";
+import { useAuth } from "../context/AuthContext";
 
-const ADMIN_EMAIL = "vsharma6_be23@thapar.edu";
+function formatDateTime(dateStr) {
+  if (!dateStr) return "N/A";
+  const d = new Date(dateStr);
+  return d.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 function AdminDashboard() {
+  const { isAdmin } = useAuth();
+  const [tabIndex, setTabIndex] = useState(0);
+
   const [flights, setFlights] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [passengers, setPassengers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [editFlight, setEditFlight] = useState(null);
-  const [editForm, setEditForm] = useState({});
-  const [deleteId, setDeleteId] = useState(null);
-  const [emailStatus, setEmailStatus] = useState("");
-  const [statusResults, setStatusResults] = useState([]);
-  const [statusLoading, setStatusLoading] = useState(false);
+
+  // Flight Add/Edit/Delete states
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [addForm, setAddForm] = useState({
+  const [flightForm, setFlightForm] = useState({
     AirlineName: "",
     Departure_Place: "",
     Destination_Place: "",
     DepartureTime: "",
     ArrivalTime: "",
-    SeatsAvailable: "",
-    Price: "",
+    SeatsAvailable: 150,
+    Price: 4500,
   });
-  const [showPayments, setShowPayments] = useState(false);
-  const [myPayments, setMyPayments] = useState([]);
-  const [myPaymentsLoading, setMyPaymentsLoading] = useState(false);
+  const [editingFlightId, setEditingFlightId] = useState(null);
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [savingFlight, setSavingFlight] = useState(false);
 
-  const token = localStorage.getItem("token");
-  const email = localStorage.getItem("email");
+  // Email Lookup State
+  const [searchEmail, setSearchEmail] = useState("");
+  const [lookupResults, setLookupResults] = useState([]);
+  const [lookupLoading, setLookupLoading] = useState(false);
+
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    try {
+      const [flightsRes, bookingsRes, paymentsRes, passengersRes] =
+        await Promise.all([
+          axiosInstance.get("/flights"),
+          axiosInstance.get("/bookings"),
+          axiosInstance.get("/payments"),
+          axiosInstance.get("/api/passenger/all"),
+        ]);
+      setFlights(flightsRes.data);
+      setBookings(bookingsRes.data);
+      setPayments(paymentsRes.data);
+      setPassengers(passengersRes.data);
+    } catch (err) {
+      console.error("Dashboard fetch error:", err);
+      toast.error("Failed to load dashboard data.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Try to get email from token if not present in localStorage
-    let userEmail = email;
-    if (!userEmail && token) {
-      try {
-        const base64Url = token.split(".")[1];
-        const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-        const jsonPayload = decodeURIComponent(
-          window
-            .atob(base64)
-            .split("")
-            .map(function (c) {
-              return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
-            })
-            .join("")
-        );
-        const decoded = JSON.parse(jsonPayload);
-        userEmail = decoded.email;
-      } catch (e) {
-        userEmail = "";
-      }
+    if (isAdmin) {
+      fetchDashboardData();
     }
-    if (userEmail !== ADMIN_EMAIL) return;
+  }, [isAdmin]);
 
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const [flightsRes, bookingsRes, paymentsRes] = await Promise.all([
-          axios.get("/flights", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get("/bookings", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get("/payments", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
-        setFlights(flightsRes.data);
-        setBookings(bookingsRes.data);
-        setPayments(paymentsRes.data);
-      } catch (err) {
-        alert("Error fetching admin data");
-      }
-      setLoading(false);
-    };
-
-    fetchData();
-  }, [token, email]);
-
-  // Use decoded email for access check
-  let userEmail = email;
-  if (!userEmail && token) {
-    try {
-      const base64Url = token.split(".")[1];
-      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-      const jsonPayload = decodeURIComponent(
-        window
-          .atob(base64)
-          .split("")
-          .map(function (c) {
-            return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
-          })
-          .join("")
-      );
-      const decoded = JSON.parse(jsonPayload);
-      userEmail = decoded.email;
-    } catch (e) {
-      userEmail = "";
-    }
-  }
-  if (userEmail !== ADMIN_EMAIL) {
-    return <h2>Access Denied: Admins only</h2>;
+  if (!isAdmin) {
+    return (
+      <Box sx={{ p: 6, textAlign: "center" }}>
+        <Typography variant="h5" color="error">
+          Access Denied: Administrator privileges required.
+        </Typography>
+      </Box>
+    );
   }
 
-  if (loading) return <div>Loading...</div>;
+  // Calculate statistics
+  const totalFlights = flights.length;
+  const totalBookings = bookings.length;
+  const totalRevenue = payments
+    .filter((p) => p.Status === "Success")
+    .reduce((acc, p) => acc + parseFloat(p.Amount || 0), 0);
+  const totalPassengers = passengers.length;
 
-  const handleEditClick = (flight) => {
-    setEditFlight(flight);
-    setEditForm({ ...flight });
-  };
-  const handleEditChange = (e) => {
-    setEditForm({ ...editForm, [e.target.name]: e.target.value });
-  };
-  const handleEditSave = async () => {
-    try {
-      await axios.put(`/flights/${editFlight.FlightID}`, editForm, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      toast.success("Flight updated successfully!");
-      setEditFlight(null); // Close the dialog before reload
-      setTimeout(() => window.location.reload(), 1200); // Give time for toast to show
-    } catch (err) {
-      toast.error("Error updating flight");
-    }
-  };
-  const handleDeleteClick = (id) => setDeleteId(id);
-  const handleDeleteConfirm = async () => {
-    try {
-      await axios.delete(`/flights/${deleteId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setDeleteId(null);
-      window.location.reload();
-    } catch (err) {
-      alert("Error deleting flight");
-    }
-  };
-  const handleDialogClose = () => {
-    setEditFlight(null);
-    setDeleteId(null);
+  // Add / Edit Flight Handlers
+  const handleOpenAdd = () => {
+    setEditingFlightId(null);
+    setFlightForm({
+      AirlineName: "IndiGo",
+      Departure_Place: "Delhi",
+      Destination_Place: "Mumbai",
+      DepartureTime: "2026-11-10T10:00",
+      ArrivalTime: "2026-11-10T12:15",
+      SeatsAvailable: 160,
+      Price: 4500,
+    });
+    setAddDialogOpen(true);
   };
 
-  // Add handler for status search
-  const handleStatusSearch = async () => {
-    if (!emailStatus.trim()) return;
-    setStatusLoading(true);
-    setStatusResults([]);
-    try {
-      const res = await axios.get(
-        `/payments/status?email=${encodeURIComponent(emailStatus)}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      setStatusResults(res.data);
-    } catch (err) {
-      setStatusResults([]);
-      alert(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          "No records found for this email."
-      );
-    }
-    setStatusLoading(false);
+  const handleOpenEdit = (flight) => {
+    setEditingFlightId(flight.FlightID);
+    const dep = flight.DepartureTime
+      ? new Date(flight.DepartureTime).toISOString().slice(0, 16)
+      : "";
+    const arr = flight.ArrivalTime
+      ? new Date(flight.ArrivalTime).toISOString().slice(0, 16)
+      : "";
+
+    setFlightForm({
+      AirlineName: flight.AirlineName,
+      Departure_Place: flight.Departure_Place,
+      Destination_Place: flight.Destination_Place,
+      DepartureTime: dep,
+      ArrivalTime: arr,
+      SeatsAvailable: flight.SeatsAvailable,
+      Price: flight.Price,
+    });
+    setAddDialogOpen(true);
   };
 
-  // Add Flight Handlers
-  const handleAddOpen = () => setAddDialogOpen(true);
-  const handleAddClose = () => setAddDialogOpen(false);
-  const handleAddChange = (e) => {
-    setAddForm({ ...addForm, [e.target.name]: e.target.value });
-  };
-  const handleAddSubmit = async () => {
+  const handleSaveFlight = async (e) => {
+    e.preventDefault();
+    setSavingFlight(true);
     try {
-      await axios.post("/flights", addForm, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      toast.success("Flight added successfully!");
+      if (editingFlightId) {
+        await axiosInstance.put(`/flights/${editingFlightId}`, flightForm);
+        toast.success("Flight updated successfully!");
+      } else {
+        await axiosInstance.post("/flights", flightForm);
+        toast.success("Flight scheduled successfully!");
+      }
       setAddDialogOpen(false);
-      setTimeout(() => window.location.reload(), 1200);
+      fetchDashboardData();
     } catch (err) {
-      toast.error("Error adding flight");
+      toast.error(err.response?.data?.error || "Error saving flight.");
+    } finally {
+      setSavingFlight(false);
     }
   };
 
-  // Handler for 'Your Payments' button
-  const handleShowPayments = async () => {
-    setShowPayments(true);
-    setMyPaymentsLoading(true);
+  const handleDeleteFlight = async () => {
+    if (!deleteTargetId) return;
     try {
-      // Get passengerId from token
-      const token = localStorage.getItem("token");
-      let passengerId = null;
-      if (token) {
-        try {
-          const base64Url = token.split(".")[1];
-          const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-          const jsonPayload = decodeURIComponent(
-            window
-              .atob(base64)
-              .split("")
-              .map(function (c) {
-                return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
-              })
-              .join("")
-          );
-          const decoded = JSON.parse(jsonPayload);
-          passengerId = decoded.id || decoded.passengerId;
-        } catch (e) {
-          passengerId = null;
-        }
-      }
-      if (!token || !passengerId) throw new Error("Not logged in");
-      const res = await axios.get(`/payments/passenger/${passengerId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setMyPayments(res.data);
+      await axiosInstance.delete(`/flights/${deleteTargetId}`);
+      toast.success("Flight removed successfully!");
+      setDeleteTargetId(null);
+      fetchDashboardData();
     } catch (err) {
-      setMyPayments([]);
-      toast.error(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          "Failed to fetch your payments."
-      );
+      toast.error(err.response?.data?.error || "Error deleting flight.");
     }
-    setMyPaymentsLoading(false);
+  };
+
+  // Passenger Email Lookup
+  const handleEmailLookup = async (e) => {
+    e.preventDefault();
+    if (!searchEmail.trim()) return;
+    setLookupLoading(true);
+    setLookupResults([]);
+    try {
+      const res = await axiosInstance.get(
+        `/payments/status?email=${encodeURIComponent(searchEmail.trim())}`
+      );
+      setLookupResults(res.data);
+    } catch (err) {
+      toast.info(
+        err.response?.data?.message || "No records found for this passenger email."
+      );
+    } finally {
+      setLookupLoading(false);
+    }
   };
 
   return (
-    <>
-      <Box sx={{ p: 4 }}>
-        <Typography variant="h3" align="center" gutterBottom>
-          Admin Dashboard
-        </Typography>
-        <Divider sx={{ my: 3 }} />
-        <Typography variant="h5" gutterBottom>
-          All Flights
-        </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          sx={{ mb: 2 }}
-          onClick={handleAddOpen}
-        >
-          Add Flight
-        </Button>
-        <Button
-          variant="contained"
-          color="secondary"
-          sx={{ mb: 2, ml: 2 }}
-          onClick={handleShowPayments}
-        >
-          Your Payments
-        </Button>
-        <Grid container spacing={2}>
-          {flights.map((flight) => (
-            <Grid item xs={12} md={6} lg={4} key={flight.FlightID}>
-              <Paper
-                sx={{ p: 2, mb: 2, cursor: "pointer", position: "relative" }}
-                elevation={3}
-              >
-                <Typography variant="subtitle1">
-                  <b>Airline:</b> {flight.AirlineName}
-                </Typography>
-                <Typography>
-                  <b>From:</b> {flight.Departure_Place} <b>To:</b>{" "}
-                  {flight.Destination_Place}
-                </Typography>
-                <Typography>
-                  <b>Departure:</b> {flight.DepartureTime}
-                </Typography>
-                <Typography>
-                  <b>Arrival:</b> {flight.ArrivalTime}
-                </Typography>
-                <Typography>
-                  <b>Seats:</b> {flight.SeatsAvailable}
-                </Typography>
-                <Typography>
-                  <b>Price:</b> ₹{flight.Price}
-                </Typography>
-                <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
-                  <Button
-                    variant="outlined"
-                    color="primary"
-                    size="small"
-                    onClick={() => handleEditClick(flight)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    size="small"
-                    onClick={() => handleDeleteClick(flight.FlightID)}
-                  >
-                    Delete
-                  </Button>
-                </Box>
-              </Paper>
-            </Grid>
-          ))}
-        </Grid>
-        {/* Edit Dialog */}
-        <Dialog open={!!editFlight} onClose={handleDialogClose}>
-          <DialogTitle>Edit Flight</DialogTitle>
-          <DialogContent>
-            <TextField
-              margin="dense"
-              label="Airline Name"
-              name="AirlineName"
-              value={editForm.AirlineName || ""}
-              onChange={handleEditChange}
-              fullWidth
-            />
-            <TextField
-              margin="dense"
-              label="Departure Place"
-              name="Departure_Place"
-              value={editForm.Departure_Place || ""}
-              onChange={handleEditChange}
-              fullWidth
-            />
-            <TextField
-              margin="dense"
-              label="Destination Place"
-              name="Destination_Place"
-              value={editForm.Destination_Place || ""}
-              onChange={handleEditChange}
-              fullWidth
-            />
-            <TextField
-              margin="dense"
-              label="Departure Time"
-              name="DepartureTime"
-              value={editForm.DepartureTime || ""}
-              onChange={handleEditChange}
-              fullWidth
-            />
-            <TextField
-              margin="dense"
-              label="Arrival Time"
-              name="ArrivalTime"
-              value={editForm.ArrivalTime || ""}
-              onChange={handleEditChange}
-              fullWidth
-            />
-            <TextField
-              margin="dense"
-              label="Seats Available"
-              name="SeatsAvailable"
-              value={editForm.SeatsAvailable || ""}
-              onChange={handleEditChange}
-              fullWidth
-            />
-            <TextField
-              margin="dense"
-              label="Price"
-              name="Price"
-              value={editForm.Price || ""}
-              onChange={handleEditChange}
-              fullWidth
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleDialogClose}>Cancel</Button>
-            <Button onClick={handleEditSave} variant="contained">
-              Save
-            </Button>
-          </DialogActions>
-        </Dialog>
-        {/* Delete Dialog */}
-        <Dialog open={!!deleteId} onClose={handleDialogClose}>
-          <DialogTitle>Delete Flight</DialogTitle>
-          <DialogContent>
-            <Typography>
-              Are you sure you want to delete this flight?
-            </Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleDialogClose}>Cancel</Button>
-            <Button
-              onClick={handleDeleteConfirm}
-              color="error"
-              variant="contained"
-            >
-              Delete
-            </Button>
-          </DialogActions>
-        </Dialog>
-        {/* Add Flight Dialog */}
-        <Dialog open={addDialogOpen} onClose={handleAddClose}>
-          <DialogTitle>Add New Flight</DialogTitle>
-          <DialogContent>
-            <TextField
-              margin="dense"
-              label="Airline Name"
-              name="AirlineName"
-              value={addForm.AirlineName}
-              onChange={handleAddChange}
-              fullWidth
-            />
-            <TextField
-              margin="dense"
-              label="Departure Place"
-              name="Departure_Place"
-              value={addForm.Departure_Place}
-              onChange={handleAddChange}
-              fullWidth
-            />
-            <TextField
-              margin="dense"
-              label="Destination Place"
-              name="Destination_Place"
-              value={addForm.Destination_Place}
-              onChange={handleAddChange}
-              fullWidth
-            />
-            <TextField
-              margin="dense"
-              label="Departure Time"
-              name="DepartureTime"
-              type="datetime-local"
-              value={addForm.DepartureTime}
-              onChange={handleAddChange}
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-            />
-            <TextField
-              margin="dense"
-              label="Arrival Time"
-              name="ArrivalTime"
-              type="datetime-local"
-              value={addForm.ArrivalTime}
-              onChange={handleAddChange}
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-            />
-            <TextField
-              margin="dense"
-              label="Seats Available"
-              name="SeatsAvailable"
-              type="number"
-              value={addForm.SeatsAvailable}
-              onChange={handleAddChange}
-              fullWidth
-            />
-            <TextField
-              margin="dense"
-              label="Price"
-              name="Price"
-              type="number"
-              value={addForm.Price}
-              onChange={handleAddChange}
-              fullWidth
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleAddClose}>Cancel</Button>
-            <Button onClick={handleAddSubmit} variant="contained">
-              Add
-            </Button>
-          </DialogActions>
-        </Dialog>
-        <Divider sx={{ my: 3 }} />
-        <Typography variant="h5" gutterBottom>
-          All Bookings
-        </Typography>
-        <Grid container spacing={2}>
-          {bookings.map((booking) => (
-            <Grid item xs={12} md={6} lg={4} key={booking.BookingID}>
-              <Paper sx={{ p: 2, mb: 2 }} elevation={3}>
-                <Typography variant="subtitle1">
-                  <b>Passenger:</b> {booking.First_name} {booking.Last_name}
-                </Typography>
-                <Typography>
-                  <b>Airline:</b> {booking.AirlineName}
-                </Typography>
-                <Typography>
-                  <b>From:</b> {booking.Departure_Place} <b>To:</b>{" "}
-                  {booking.Destination_Place}
-                </Typography>
-                <Typography>
-                  <b>Status:</b> {booking.Status}
-                </Typography>
-              </Paper>
-            </Grid>
-          ))}
-        </Grid>
-        <Divider sx={{ my: 3 }} />
-        <Typography variant="h5" gutterBottom>
-          All Payments
-        </Typography>
-        <Grid container spacing={2}>
-          {payments.map((payment) => (
-            <Grid item xs={12} md={6} lg={4} key={payment.PaymentID}>
-              <Paper sx={{ p: 2, mb: 2 }} elevation={3}>
-                <Typography variant="subtitle1">
-                  <b>Passenger:</b> {payment.First_name} {payment.Last_name}
-                </Typography>
-                <Typography>
-                  <b>Airline:</b> {payment.AirlineName}
-                </Typography>
-                <Typography>
-                  <b>Amount:</b> ₹{payment.Amount}
-                </Typography>
-                <Typography>
-                  <b>Status:</b> {payment.Status}
-                </Typography>
-                <Typography>
-                  <b>Method:</b> {payment.payment_method}
-                </Typography>
-              </Paper>
-            </Grid>
-          ))}
-        </Grid>
-        {/* Search by email section moved to end */}
-        <Divider sx={{ my: 3 }} />
-        <Typography variant="h5" gutterBottom>
-          Search Passenger Booking/Payment Status by Email
-        </Typography>
-        <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-          <TextField
-            label="Passenger Email"
-            value={emailStatus}
-            onChange={(e) => setEmailStatus(e.target.value)}
-            size="small"
-            sx={{ mr: 2, width: 300 }}
-          />
-          <IconButton
-            color="primary"
-            onClick={handleStatusSearch}
-            disabled={statusLoading}
-          >
-            <SearchIcon />
-          </IconButton>
+    <Box sx={{ p: { xs: 2, md: 4 }, bgcolor: "#f8fafc", minHeight: "100vh" }}>
+      {/* Top Header */}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          mb: 4,
+          flexWrap: "wrap",
+          gap: 2,
+        }}
+      >
+        <Box>
+          <Typography variant="h4" fontWeight={800} color="#0f2027">
+            Airline Operations & Admin Control
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Master control for flight schedules, reservations, passengers, and financial transactions
+          </Typography>
         </Box>
-        {statusResults.length > 0 && (
-          <Paper sx={{ p: 2, mb: 2 }}>
-            {statusResults.map((row, idx) => (
-              <Box key={idx} sx={{ mb: 2 }}>
-                <Typography>
-                  <b>Name:</b> {row.First_name} {row.Last_name}
-                </Typography>
-                <Typography>
-                  <b>Email:</b> {row.Email}
-                </Typography>
-                <Typography>
-                  <b>BookingID:</b> {row.BookingID}
-                </Typography>
-                <Typography>
-                  <b>Airline:</b> {row.AirlineName}
-                </Typography>
-                <Typography>
-                  <b>From:</b> {row.Departure_Place} <b>To:</b>{" "}
-                  {row.Destination_Place}
-                </Typography>
-                <Typography>
-                  <b>Booking Status:</b> {row.BookingStatus}
-                </Typography>
-                <Typography>
-                  <b>Payment Amount:</b> ₹{row.Amount ?? "-"}
-                </Typography>
-                <Typography>
-                  <b>Payment Status:</b> {row.PaymentStatus ?? "-"}
-                </Typography>
-                <Divider sx={{ my: 1 }} />
-              </Box>
-            ))}
-          </Paper>
-        )}
-        {showPayments && (
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Your Payments
-            </Typography>
-            {myPaymentsLoading ? (
-              <Typography>Loading...</Typography>
-            ) : myPayments.length === 0 ? (
-              <Typography>No payments to display.</Typography>
-            ) : (
-              myPayments.map((pay, idx) => (
-                <Box key={idx} sx={{ mb: 2 }}>
-                  <Typography>
-                    <b>PaymentID:</b> {pay.PaymentID}
-                  </Typography>
-                  <Typography>
-                    <b>Airline:</b> {pay.AirlineName}
-                  </Typography>
-                  <Typography>
-                    <b>Amount:</b> ₹{pay.Amount}
-                  </Typography>
-                  <Typography>
-                    <b>Method:</b> {pay.payment_method}
-                  </Typography>
-                  <Typography>
-                    <b>Status:</b> {pay.Status}
-                  </Typography>
-                  <Divider sx={{ my: 1 }} />
-                </Box>
-              ))
-            )}
-          </Paper>
-        )}
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={handleOpenAdd}
+          sx={{
+            background: "linear-gradient(45deg, #00c6ff, #0072ff)",
+            fontWeight: 700,
+            px: 3,
+            py: 1,
+            borderRadius: 2,
+          }}
+        >
+          Add New Flight
+        </Button>
       </Box>
-      <ToastContainer position="bottom-right" autoClose={2000} />
-    </>
+
+      {/* KPI Stats Cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={2} sx={{ borderRadius: 3, borderLeft: "5px solid #0072ff" }}>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Box>
+                  <Typography variant="caption" color="text.secondary" fontWeight={700}>
+                    SCHEDULED FLIGHTS
+                  </Typography>
+                  <Typography variant="h4" fontWeight={800} color="#0f2027">
+                    {totalFlights}
+                  </Typography>
+                </Box>
+                <FlightTakeoffIcon sx={{ fontSize: 40, color: "#0072ff" }} />
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={2} sx={{ borderRadius: 3, borderLeft: "5px solid #2e7d32" }}>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Box>
+                  <Typography variant="caption" color="text.secondary" fontWeight={700}>
+                    TOTAL BOOKINGS
+                  </Typography>
+                  <Typography variant="h4" fontWeight={800} color="#0f2027">
+                    {totalBookings}
+                  </Typography>
+                </Box>
+                <BookOnlineIcon sx={{ fontSize: 40, color: "#2e7d32" }} />
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={2} sx={{ borderRadius: 3, borderLeft: "5px solid #ed6c02" }}>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Box>
+                  <Typography variant="caption" color="text.secondary" fontWeight={700}>
+                    TOTAL REVENUE
+                  </Typography>
+                  <Typography variant="h4" fontWeight={800} color="#0f2027">
+                    ₹{totalRevenue.toLocaleString("en-IN")}
+                  </Typography>
+                </Box>
+                <MonetizationOnIcon sx={{ fontSize: 40, color: "#ed6c02" }} />
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={2} sx={{ borderRadius: 3, borderLeft: "5px solid #9c27b0" }}>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Box>
+                  <Typography variant="caption" color="text.secondary" fontWeight={700}>
+                    REGISTERED PASSENGERS
+                  </Typography>
+                  <Typography variant="h4" fontWeight={800} color="#0f2027">
+                    {totalPassengers}
+                  </Typography>
+                </Box>
+                <PeopleIcon sx={{ fontSize: 40, color: "#9c27b0" }} />
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Tabs Navigation */}
+      <Paper elevation={2} sx={{ borderRadius: 3, mb: 3 }}>
+        <Tabs
+          value={tabIndex}
+          onChange={(e, val) => setTabIndex(val)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ borderBottom: 1, borderColor: "divider", px: 2 }}
+        >
+          <Tab label={`Flights Management (${flights.length})`} sx={{ fontWeight: 700 }} />
+          <Tab label={`Bookings (${bookings.length})`} sx={{ fontWeight: 700 }} />
+          <Tab label={`Payments History (${payments.length})`} sx={{ fontWeight: 700 }} />
+          <Tab label={`Passenger Lookup`} sx={{ fontWeight: 700 }} />
+          <Tab label={`Passenger Directory (${passengers.length})`} sx={{ fontWeight: 700 }} />
+        </Tabs>
+
+        {loading ? (
+          <Box sx={{ p: 6, textAlign: "center" }}>
+            <CircularProgress />
+            <Typography sx={{ mt: 2 }} color="text.secondary">
+              Syncing operational data...
+            </Typography>
+          </Box>
+        ) : (
+          <Box sx={{ p: 3 }}>
+            {/* TAB 0: Flights Management */}
+            {tabIndex === 0 && (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: "#f1f5f9" }}>
+                      <TableCell sx={{ fontWeight: 700 }}>Flight ID</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Airline</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Departure</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Destination</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Departure Time</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Arrival Time</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Seats Left</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Fare (₹)</TableCell>
+                      <TableCell sx={{ fontWeight: 700, textAlign: "center" }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {flights.map((flight) => (
+                      <TableRow key={flight.FlightID} hover>
+                        <TableCell>#{flight.FlightID}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{flight.AirlineName}</TableCell>
+                        <TableCell>{flight.Departure_Place}</TableCell>
+                        <TableCell>{flight.Destination_Place}</TableCell>
+                        <TableCell>{formatDateTime(flight.DepartureTime)}</TableCell>
+                        <TableCell>{formatDateTime(flight.ArrivalTime)}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={`${flight.SeatsAvailable} seats`}
+                            size="small"
+                            color={flight.SeatsAvailable > 20 ? "success" : "warning"}
+                          />
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>
+                          ₹{parseFloat(flight.Price).toLocaleString("en-IN")}
+                        </TableCell>
+                        <TableCell sx={{ textAlign: "center" }}>
+                          <IconButton
+                            color="primary"
+                            size="small"
+                            onClick={() => handleOpenEdit(flight)}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            color="error"
+                            size="small"
+                            onClick={() => setDeleteTargetId(flight.FlightID)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+
+            {/* TAB 1: Bookings */}
+            {tabIndex === 1 && (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: "#f1f5f9" }}>
+                      <TableCell sx={{ fontWeight: 700 }}>Booking ID</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Passenger Name</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Contact</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Flight / Airline</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Route</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Fare</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Booking Status</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Payment Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {bookings.map((b) => (
+                      <TableRow key={b.BookingID} hover>
+                        <TableCell>#{b.BookingID}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>
+                          {b.First_name} {b.Last_name}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{b.Email}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {b.Phone}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>{b.AirlineName}</TableCell>
+                        <TableCell>
+                          {b.Departure_Place} ➔ {b.Destination_Place}
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>
+                          ₹{parseFloat(b.Price || b.Amount || 0).toLocaleString("en-IN")}
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={b.Status}
+                            size="small"
+                            color={b.Status === "Confirmed" ? "success" : "error"}
+                            sx={{ fontWeight: 700 }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={b.PaymentStatus || "Success"}
+                            size="small"
+                            variant="outlined"
+                            color={b.PaymentStatus === "Success" ? "success" : "default"}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+
+            {/* TAB 2: Payments History */}
+            {tabIndex === 2 && (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: "#f1f5f9" }}>
+                      <TableCell sx={{ fontWeight: 700 }}>Payment ID</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Booking ID</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Passenger</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Flight</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Amount</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Payment Method</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {payments.map((p) => (
+                      <TableRow key={p.PaymentID} hover>
+                        <TableCell>#{p.PaymentID}</TableCell>
+                        <TableCell>#{p.BookingID}</TableCell>
+                        <TableCell>
+                          {p.First_name} {p.Last_name}
+                          <Typography variant="caption" display="block" color="text.secondary">
+                            {p.Email}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>{p.AirlineName}</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: "#2e7d32" }}>
+                          ₹{parseFloat(p.Amount).toLocaleString("en-IN")}
+                        </TableCell>
+                        <TableCell>{p.payment_method}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={p.Status}
+                            size="small"
+                            color={p.Status === "Success" ? "success" : "error"}
+                            sx={{ fontWeight: 700 }}
+                          />
+                        </TableCell>
+                        <TableCell sx={{ color: "text.secondary", fontSize: "0.85rem" }}>
+                          {formatDateTime(p.PaymentDate)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+
+            {/* TAB 3: Passenger Lookup by Email */}
+            {tabIndex === 3 && (
+              <Box>
+                <Typography variant="h6" fontWeight={700} gutterBottom>
+                  Search Booking & Payment Status by Passenger Email
+                </Typography>
+                <Box
+                  component="form"
+                  onSubmit={handleEmailLookup}
+                  sx={{ display: "flex", gap: 2, mb: 4, maxWidth: 600 }}
+                >
+                  <TextField
+                    fullWidth
+                    size="small"
+                    placeholder="e.g. aryan.singh@example.com"
+                    value={searchEmail}
+                    onChange={(e) => setSearchEmail(e.target.value)}
+                  />
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    startIcon={<SearchIcon />}
+                    disabled={lookupLoading}
+                    sx={{ px: 3, fontWeight: 700 }}
+                  >
+                    Search
+                  </Button>
+                </Box>
+
+                {lookupLoading && <CircularProgress size={30} />}
+
+                {lookupResults.length > 0 && (
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table>
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: "#f1f5f9" }}>
+                          <TableCell sx={{ fontWeight: 700 }}>Passenger</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Flight</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Route</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Booking Status</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Amount Paid</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Payment Status</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {lookupResults.map((r, i) => (
+                          <TableRow key={i}>
+                            <TableCell>
+                              {r.First_name} {r.Last_name}
+                              <Typography variant="caption" display="block">
+                                {r.Email}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>{r.AirlineName}</TableCell>
+                            <TableCell>
+                              {r.Departure_Place} ➔ {r.Destination_Place}
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={r.BookingStatus}
+                                size="small"
+                                color={r.BookingStatus === "Confirmed" ? "success" : "error"}
+                              />
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>
+                              ₹{parseFloat(r.Amount || 0).toLocaleString("en-IN")}
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={r.PaymentStatus || "Success"}
+                                size="small"
+                                color={r.PaymentStatus === "Success" ? "success" : "default"}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </Box>
+            )}
+
+            {/* TAB 4: Passenger Directory */}
+            {tabIndex === 4 && (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: "#f1f5f9" }}>
+                      <TableCell sx={{ fontWeight: 700 }}>Passenger ID</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Full Name</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Email Address</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Phone Number</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Account Role</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {passengers.map((p) => (
+                      <TableRow key={p.PassengerID} hover>
+                        <TableCell>#{p.PassengerID}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>
+                          {p.First_name} {p.Last_name}
+                        </TableCell>
+                        <TableCell>{p.Email}</TableCell>
+                        <TableCell>{p.Phone}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={p.Role}
+                            size="small"
+                            color={p.Role === "admin" ? "warning" : "default"}
+                            sx={{ fontWeight: 700 }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Box>
+        )}
+      </Paper>
+
+      {/* Add / Edit Flight Dialog */}
+      <Dialog
+        open={addDialogOpen}
+        onClose={() => !savingFlight && setAddDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          {editingFlightId ? "Edit Flight Schedule" : "Schedule New Flight"}
+        </DialogTitle>
+        <form onSubmit={handleSaveFlight}>
+          <DialogContent dividers>
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Airline Name"
+                  value={flightForm.AirlineName}
+                  onChange={(e) =>
+                    setFlightForm({ ...flightForm, AirlineName: e.target.value })
+                  }
+                  required
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Departure City"
+                  value={flightForm.Departure_Place}
+                  onChange={(e) =>
+                    setFlightForm({
+                      ...flightForm,
+                      Departure_Place: e.target.value,
+                    })
+                  }
+                  required
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Destination City"
+                  value={flightForm.Destination_Place}
+                  onChange={(e) =>
+                    setFlightForm({
+                      ...flightForm,
+                      Destination_Place: e.target.value,
+                    })
+                  }
+                  required
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Departure Time"
+                  type="datetime-local"
+                  value={flightForm.DepartureTime}
+                  onChange={(e) =>
+                    setFlightForm({
+                      ...flightForm,
+                      DepartureTime: e.target.value,
+                    })
+                  }
+                  InputLabelProps={{ shrink: true }}
+                  required
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Arrival Time"
+                  type="datetime-local"
+                  value={flightForm.ArrivalTime}
+                  onChange={(e) =>
+                    setFlightForm({
+                      ...flightForm,
+                      ArrivalTime: e.target.value,
+                    })
+                  }
+                  InputLabelProps={{ shrink: true }}
+                  required
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Available Seats"
+                  type="number"
+                  value={flightForm.SeatsAvailable}
+                  onChange={(e) =>
+                    setFlightForm({
+                      ...flightForm,
+                      SeatsAvailable: e.target.value,
+                    })
+                  }
+                  required
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Ticket Price (₹)"
+                  type="number"
+                  value={flightForm.Price}
+                  onChange={(e) =>
+                    setFlightForm({ ...flightForm, Price: e.target.value })
+                  }
+                  required
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button
+              onClick={() => setAddDialogOpen(false)}
+              disabled={savingFlight}
+              color="inherit"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={savingFlight}
+              sx={{ fontWeight: 700 }}
+            >
+              {savingFlight ? (
+                <CircularProgress size={20} color="inherit" />
+              ) : editingFlightId ? (
+                "Save Changes"
+              ) : (
+                "Schedule Flight"
+              )}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={Boolean(deleteTargetId)}
+        onClose={() => setDeleteTargetId(null)}
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>Remove Flight?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete flight #{deleteTargetId}? Any existing
+            bookings will also be removed.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setDeleteTargetId(null)} color="inherit">
+            Cancel
+          </Button>
+          <Button variant="contained" color="error" onClick={handleDeleteFlight}>
+            Delete Flight
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }
 

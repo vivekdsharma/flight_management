@@ -1,13 +1,8 @@
-// db.js
 const mysql = require('mysql2/promise');
-const dotenv = require('dotenv');
-dotenv.config();
+require('dotenv').config();
 
-const db = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME,
-});
+const connectionUri = process.env.DATABASE_URL || 'mysql://3eErUSztA2HBHTR.root:W7wiuEH3PCuwRYkQ@gateway01.ap-southeast-1.prod.aws.tidbcloud.com:4000/flight_management?ssl={"rejectUnauthorized":true}';
+
+const db = mysql.createPool(connectionUri);
 
 module.exports = db;

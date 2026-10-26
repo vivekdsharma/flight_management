@@ -1,25 +1,46 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
-const verifyToken = require("../middleware/verifyToken"); // Middleware to verify JWT
+const verifyToken = require("../middleware/verifyToken");
 const adminOnly = require("../middleware/adminOnly");
 
-// GET all bookings
+// GET all bookings (Admin only)
 router.get("/", verifyToken, adminOnly, async (req, res) => {
   try {
     const [rows] = await db.query(`
-      SELECT b.BookingID, p.First_name, p.Last_name, f.AirlineName, f.Departure_Place, f.Destination_Place, b.Status
+      SELECT 
+        b.BookingID, 
+        b.PassengerID,
+        b.FlightID,
+        p.First_name, 
+        p.Last_name, 
+        p.Email,
+        p.Phone,
+        f.AirlineName, 
+        f.Departure_Place, 
+        f.Destination_Place, 
+        f.DepartureTime,
+        f.ArrivalTime,
+        f.Price,
+        b.BookingDate,
+        b.Status,
+        pay.Amount,
+        pay.payment_method,
+        pay.Status AS PaymentStatus
       FROM Booking b
       JOIN Passenger p ON b.PassengerID = p.PassengerID
       JOIN Flights f ON b.FlightID = f.FlightID
+      LEFT JOIN Payment pay ON b.BookingID = pay.BookingID
+      ORDER BY b.BookingID DESC
     `);
     res.json(rows);
   } catch (error) {
+    console.error("Error fetching all bookings:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// POST new booking (basic version)
+// POST new booking (Admin manual create)
 router.post("/", verifyToken, adminOnly, async (req, res) => {
   const { passengerId, flightId, status } = req.body;
   try {
@@ -27,25 +48,42 @@ router.post("/", verifyToken, adminOnly, async (req, res) => {
       `INSERT INTO Booking (PassengerID, FlightID, Status) VALUES (?, ?, ?)`,
       [passengerId, flightId, status || "Pending"]
     );
-    res.json({ bookingId: result.insertId, message: "Booking created!" });
+    res.status(201).json({ bookingId: result.insertId, message: "Booking created successfully!" });
   } catch (error) {
+    console.error("Error creating booking:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-
-// Get all bookings for a passenger using email
+// Get all bookings for the logged-in passenger
 router.get("/my-bookings", verifyToken, async (req, res) => {
-  const passengerId = req.user.id; // Use 'id' from JWT payload
+  const passengerId = req.user.id;
   try {
     const [rows] = await db.query(
-      `SELECT b.BookingID, f.AirlineName, f.Departure_Place, f.Destination_Place, b.Status
-       FROM Booking b JOIN Flights f ON b.FlightID = f.FlightID
-       WHERE b.PassengerID = ?`,
+      `SELECT 
+         b.BookingID, 
+         b.FlightID,
+         f.AirlineName, 
+         f.Departure_Place, 
+         f.Destination_Place, 
+         f.DepartureTime,
+         f.ArrivalTime,
+         f.Price,
+         b.BookingDate,
+         b.Status,
+         pay.Amount,
+         pay.payment_method,
+         pay.Status AS PaymentStatus
+       FROM Booking b 
+       JOIN Flights f ON b.FlightID = f.FlightID
+       LEFT JOIN Payment pay ON b.BookingID = pay.BookingID
+       WHERE b.PassengerID = ?
+       ORDER BY b.BookingID DESC`,
       [passengerId]
     );
     res.json(rows);
   } catch (error) {
+    console.error("Error fetching passenger bookings:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -53,17 +91,12 @@ router.get("/my-bookings", verifyToken, async (req, res) => {
 // Cancel a booking
 router.put("/cancel/:bookingId", verifyToken, async (req, res) => {
   const { bookingId } = req.params;
-  let loggedInPassengerId = req.user.id; // Use 'id' from JWT payload
-
-  // Ensure both IDs are numbers for comparison
-  if (typeof loggedInPassengerId === "string") {
-    loggedInPassengerId = parseInt(loggedInPassengerId, 10);
-  }
+  const loggedInPassengerId = parseInt(req.user.id, 10);
+  const isAdmin = req.user.role === "admin" || req.user.email === "vsharma6_be23@thapar.edu";
 
   try {
-    // Step 1: Check if this booking belongs to the logged-in user
     const [rows] = await db.query(
-      `SELECT PassengerID FROM Booking WHERE BookingID = ?`,
+      `SELECT PassengerID, Status FROM Booking WHERE BookingID = ?`,
       [bookingId]
     );
 
@@ -71,25 +104,26 @@ router.put("/cancel/:bookingId", verifyToken, async (req, res) => {
       return res.status(404).json({ message: "Booking not found" });
     }
 
-    let bookingOwnerId = rows[0].PassengerID;
-    if (typeof bookingOwnerId === "string") {
-      bookingOwnerId = parseInt(bookingOwnerId, 10);
+    const booking = rows[0];
+
+    // Only owner or admin can cancel
+    if (!isAdmin && booking.PassengerID !== loggedInPassengerId) {
+      return res.status(403).json({ message: "Unauthorized to cancel this booking" });
     }
 
-    if (bookingOwnerId !== loggedInPassengerId) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized to cancel this booking" });
+    if (booking.Status === "Cancelled") {
+      return res.status(400).json({ message: "Booking is already cancelled" });
     }
 
-    // Step 2: Update booking status to Cancelled
-    const [result] = await db.query(
+    // Trigger increase_seat_on_cancel will automatically add +1 back to SeatsAvailable!
+    await db.query(
       `UPDATE Booking SET Status = 'Cancelled' WHERE BookingID = ?`,
       [bookingId]
     );
 
-    res.json({ message: "Booking cancelled successfully" });
+    res.json({ message: "Booking cancelled successfully. Seat restored to flight availability." });
   } catch (error) {
+    console.error("Error cancelling booking:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -99,19 +133,37 @@ router.get("/booking/:id", async (req, res) => {
   const { id } = req.params;
   try {
     const [rows] = await db.query(
-      `SELECT b.BookingID, p.First_name, p.Last_name, f.AirlineName, f.Departure_Place, f.Destination_Place, b.Status
+      `SELECT 
+         b.BookingID, 
+         p.First_name, 
+         p.Last_name, 
+         p.Email,
+         f.AirlineName, 
+         f.Departure_Place, 
+         f.Destination_Place, 
+         f.DepartureTime,
+         f.ArrivalTime,
+         f.Price,
+         b.BookingDate,
+         b.Status,
+         pay.Amount,
+         pay.payment_method,
+         pay.Status AS PaymentStatus
        FROM Booking b
        JOIN Passenger p ON b.PassengerID = p.PassengerID
        JOIN Flights f ON b.FlightID = f.FlightID
+       LEFT JOIN Payment pay ON b.BookingID = pay.BookingID
        WHERE b.BookingID = ?`,
       [id]
     );
 
-    if (rows.length === 0)
+    if (rows.length === 0) {
       return res.status(404).json({ message: "Booking not found" });
+    }
 
     res.json(rows[0]);
   } catch (error) {
+    console.error("Error fetching booking details:", error);
     res.status(500).json({ error: error.message });
   }
 });

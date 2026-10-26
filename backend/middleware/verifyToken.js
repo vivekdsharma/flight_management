@@ -1,16 +1,22 @@
 const jwt = require("jsonwebtoken");
+const JWT_SECRET = process.env.JWT_SECRET || "yourSecretKey";
 
 const verifyToken = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1]; // Bearer token
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.startsWith("Bearer ")
+    ? authHeader.split(" ")[1]
+    : req.headers["x-access-token"] || authHeader;
 
-  if (!token) return res.status(401).json({ message: "Access denied. No token provided." });
+  if (!token) {
+    return res.status(401).json({ message: "Access denied. No authentication token provided." });
+  }
 
   try {
-    const decoded = jwt.verify(token, "yourSecretKey"); // keep this key in .env for real projects
+    const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
     next();
   } catch (err) {
-    res.status(401).json({ message: "Invalid token" });
+    return res.status(401).json({ message: "Invalid or expired token" });
   }
 };
 
